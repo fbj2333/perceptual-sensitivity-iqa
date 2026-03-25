@@ -1,0 +1,47 @@
+# Debug training config (local, small batch, few steps)
+# Usage: python scripts/train/train.py --config configs/train/debug.yaml
+
+experiment:
+  name: "debug"
+  output_dir: "experiments/debug"
+
+model:
+  backbone: "clip-convnext-large"
+  quality_head: "mfe"          # SEAGULL-style MFE
+  msfa:
+    num_queries: 128
+    layers: [7, 14, 23]        # Multi-scale feature layers
+  score_output: "regression"   # regression | distribution
+
+data:
+  train_datasets:
+    - name: "agiqa3k"
+      split: "train"
+      quality_dim: "quality"   # Use only quality MOS (not alignment)
+  val_datasets:
+    - name: "agiqa3k"
+      split: "test"
+  batch_size: 2
+  num_workers: 0               # Debug: no multiprocessing
+  image_size: 448
+
+training:
+  epochs: 2
+  lr: 2.0e-5
+  optimizer: "adamw"
+  weight_decay: 0.01
+  scheduler: "cosine"
+  warmup_steps: 50
+  lora:
+    enabled: true
+    rank: 16                   # Small for debug
+    alpha: 32
+  loss_weights:
+    quality_mse: 2.0
+    rank_margin: 0.5
+
+logging:
+  wandb:
+    enabled: false             # Disable for debug
+  log_interval: 10
+  eval_interval: 50

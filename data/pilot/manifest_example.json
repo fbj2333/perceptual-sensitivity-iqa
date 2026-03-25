@@ -1,0 +1,62 @@
+{
+  "dataset_info": {
+    "name": "pilot_cfgscale_v1",
+    "description": "Same-seed pairs with different CFG scales for perceptual sensitivity evaluation"
+  },
+  "pairs": [
+    {
+      "pair_id": "001",
+      "prompt": "portrait of a young girl with flowers in her hair, soft natural lighting",
+      "seed": 42,
+      "reference": "images/001_cfg7.5.png",
+      "variant": "images/001_cfg2.0.png",
+      "variant_type": "cfg_scale",
+      "variant_params": {"reference_cfg": 7.5, "variant_cfg": 2.0},
+      "human_scores": {
+        "reference_mos": 82,
+        "variant_mos": 45,
+        "regions": {
+          "face": {"ref": 85, "var": 25},
+          "hair": {"ref": 80, "var": 60},
+          "background": {"ref": 80, "var": 70}
+        }
+      }
+    },
+    {
+      "pair_id": "002",
+      "prompt": "cityscape at night with neon lights reflecting on wet streets",
+      "seed": 123,
+      "reference": "images/002_cfg7.5.png",
+      "variant": "images/002_cfg3.0.png",
+      "variant_type": "cfg_scale",
+      "variant_params": {"reference_cfg": 7.5, "variant_cfg": 3.0},
+      "human_scores": {
+        "reference_mos": 78,
+        "variant_mos": 72,
+        "regions": {
+          "buildings": {"ref": 75, "var": 70},
+          "neon_lights": {"ref": 82, "var": 65},
+          "street": {"ref": 76, "var": 74}
+        }
+      }
+    },
+    {
+      "pair_id": "003",
+      "prompt": "close-up of hands holding a vintage camera, shallow depth of field",
+      "seed": 7,
+      "reference": "images/003_cfg7.5.png",
+      "variant": "images/003_cfg2.5.png",
+      "variant_type": "cfg_scale",
+      "variant_params": {"reference_cfg": 7.5, "variant_cfg": 2.5},
+      "human_scores": {
+        "reference_mos": 75,
+        "variant_mos": 38,
+        "regions": {
+          "hands": {"ref": 70, "var": 20},
+          "camera": {"ref": 80, "var": 55},
+          "background": {"ref": 72, "var": 68}
+        }
+      }
+    }
+  ]
+}

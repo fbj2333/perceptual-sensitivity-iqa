@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Perceptual Sensitivity-Aware Quality Assessment for AIGC</title>
+<style>
+  /* ── Reset & Base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 18px; scroll-behavior: smooth; }
+  body { font-family: 'Georgia', 'Times New Roman', serif; color: #1a1a2e; background: #fff; }
+
+  /* ── Slide system ── */
+  .slide {
+    min-height: 100vh; padding: 60px 10vw;
+    display: flex; flex-direction: column; justify-content: center;
+    border-bottom: 1px solid #e0e0e0;
+    page-break-after: always;
+  }
+  .slide:nth-child(odd) { background: #fff; }
+  .slide:nth-child(even) { background: #f8f9fc; }
+
+  /* ── Typography ── */
+  h1 { font-size: 2.4rem; font-weight: 700; color: #0d1b2a; margin-bottom: 0.3em; line-height: 1.2; }
+  h2 { font-size: 1.6rem; font-weight: 700; color: #1b263b; margin-bottom: 0.8em; border-bottom: 2px solid #415a77; padding-bottom: 0.25em; }
+  h3 { font-size: 1.15rem; font-weight: 700; color: #415a77; margin: 1.2em 0 0.4em; }
+  p, li { font-size: 1rem; line-height: 1.75; color: #333; }
+  .subtitle { font-size: 1.1rem; color: #555; margin-bottom: 1.5em; font-style: italic; }
+  .authors { font-size: 1rem; color: #666; margin-bottom: 0.3em; }
+  .venue { font-size: 0.95rem; color: #888; }
+
+  /* ── Lists ── */
+  ul, ol { padding-left: 1.5em; margin: 0.5em 0; }
+  li { margin-bottom: 0.35em; }
+  li::marker { color: #415a77; }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 0.9rem; }
+  th { background: #1b263b; color: #fff; padding: 10px 14px; text-align: left; font-weight: 600; }
+  td { padding: 9px 14px; border-bottom: 1px solid #ddd; }
+  tr:nth-child(even) td { background: #f4f6fa; }
+  tr:hover td { background: #e8ecf4; }
+
+  /* ── Highlight boxes ── */
+  .keypoint {
+    background: #eef2ff; border-left: 4px solid #415a77;
+    padding: 16px 20px; margin: 1em 0; border-radius: 0 6px 6px 0;
+  }
+  .keypoint p { margin: 0; }
+  .keypoint strong { color: #1b263b; }
+
+  .alert {
+    background: #fff3e6; border-left: 4px solid #e07000;
+    padding: 16px 20px; margin: 1em 0; border-radius: 0 6px 6px 0;
+  }
+
+  /* ── Code / diagram blocks ── */
+  .diagram {
+    background: #1b263b; color: #c8d6e5; padding: 24px 28px;
+    border-radius: 8px; margin: 1.2em 0;
+    font-family: 'Menlo', 'Consolas', monospace; font-size: 0.82rem;
+    line-height: 1.6; overflow-x: auto; white-space: pre;
+  }
+
+  /* ── Two-column layout ── */
+  .cols { display: flex; gap: 40px; margin: 1em 0; }
+  .cols > div { flex: 1; }
+
+  /* ── Comparison arrows ── */
+  .vs { display: flex; align-items: center; gap: 20px; margin: 1em 0; }
+  .vs > div { flex: 1; padding: 16px; border-radius: 8px; }
+  .vs .left { background: #ffeaea; border: 1px solid #d9534f; }
+  .vs .right { background: #eafff0; border: 1px solid #5cb85c; }
+  .vs .arrow { font-size: 1.8rem; color: #999; flex: 0; }
+
+  /* ── References ── */
+  .ref { font-size: 0.78rem; color: #888; margin-top: 2em; line-height: 1.5; }
+  .ref a { color: #415a77; text-decoration: none; }
+
+  /* ── Slide number ── */
+  .slide-num {
+    position: relative; top: -20px; text-align: right;
+    font-size: 0.8rem; color: #aaa; font-family: 'Menlo', monospace;
+  }
+
+  /* ── Print ── */
+  @media print {
+    .slide { min-height: auto; padding: 30px 40px; }
+    body { font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- SLIDE 1: Title -->
+<!-- ============================================================ -->
+<div class="slide" style="text-align:center; justify-content:center;">
+  <h1>Perceptual Sensitivity-Aware<br>Quality Assessment for AIGC</h1>
+  <p class="subtitle">Pixel Change &ne; Perceptual Quality Difference:<br>A Region-Dependent, Semantically-Driven Non-Linear Gap</p>
+  <p class="venue" style="margin-top:2em;">Research Proposal &mdash; Literature Survey &amp; Idea Presentation</p>
+  <p class="venue">March 2026</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 2: Motivation -->
+<!-- ============================================================ -->
+<div class="slide">
+  <div class="slide-num">2 / 14</div>
+  <h2>Motivation: The Core Problem</h2>
+
+  <div class="keypoint">
+    <p><strong>Pixel-level change &ne; Human perceptual quality difference.</strong><br>
+    This gap is region-dependent, semantically-dependent, and highly non-linear.</p>
+  </div>
+
+  <p>Same seed, same prompt &mdash; two images with identical composition but different details:</p>
+
+  <div class="vs">
+    <div class="left">
+      <h3>Face: subtle eye distortion</h3>
+      <p>Pixel difference: <strong>~2%</strong><br>
+      Perceptual impact: <strong>Devastating</strong> (uncanny valley)<br>
+      Human score drop: <strong>&minus;40 pts</strong></p>
+    </div>
+    <div class="arrow">&harr;</div>
+    <div class="right">
+      <h3>Background: slight sharpness loss</h3>
+      <p>Pixel difference: <strong>~5%</strong><br>
+      Perceptual impact: <strong>Barely noticeable</strong><br>
+      Human score drop: <strong>&minus;2 pts</strong></p>
+    </div>
+  </div>
+
+  <p>Existing IQA methods (LPIPS, NIQE, TOPIQ, VLM-based) measure <em>how much changed</em>, not <em>whether humans care about the change</em>.</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 3: Evidence from A-Bench -->
+<!-- ============================================================ -->
+<div class="slide">
+  <div class="slide-num">3 / 14</div>
+  <h2>Evidence: LMMs Fundamentally Fail at Quality Perception</h2>
+
+  <p>A-Bench (ICLR 2025) tested 23 LMMs on AIGC evaluation across 2,864 images from 16 T2I models:</p>
+
+  <table>
+    <tr><th>Dimension</th><th>Best LMM<br>(Qwen2-VL-72B)</th><th>Worst Human</th><th>Gap</th></tr>
+    <tr><td>Semantic Understanding</td><td>86.02%</td><td>88.50%</td><td style="color:#5cb85c;">&minus;2.5%</td></tr>
+    <tr><td><strong>Quality Perception (overall)</strong></td><td><strong>68.99%</strong></td><td><strong>83.61%</strong></td><td style="color:#d9534f;"><strong>&minus;14.6%</strong></td></tr>
+    <tr><td>&emsp;Technical Quality</td><td>74.22%</td><td>94.32%</td><td style="color:#d9534f;">&minus;20.1%</td></tr>
+    <tr><td>&emsp;Aesthetic Quality</td><td>60.31%</td><td>84.49%</td><td style="color:#d9534f;">&minus;24.2%</td></tr>
+    <tr><td>&emsp;Generative Distortion</td><td>70.23%</td><td>86.25%</td><td style="color:#d9534f;">&minus;16.0%</td></tr>
+  </table>
+
+  <div class="keypoint">
+    <p><strong>Key takeaway:</strong> Even the <em>worst</em> human outperforms the <em>best</em> LMM by 14.6% on quality perception. Quality assessment is a fundamental LMM weakness &mdash; not a scaling issue.</p>
+  </div>
+
+  <div class="alert">
+    <p><strong>What A-Bench doesn't answer:</strong> It asks "Is there noise?" (Yes/No). It does <strong>not</strong> ask "How much does this noise affect human perception?" &mdash; That is our entry point.</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 4: Prompt-Conditioned Quality -->
+<!-- ============================================================ -->
+<div class="slide">
+  <div class="slide-num">4 / 14</div>
+  <h2>Insight: Perceptual Quality is Prompt-Conditioned</h2>
+
+  <p>The same visual feature can be acceptable or a defect, depending on the prompt:</p>
+
+  <table>
+    <tr><th>Prompt Signal</th><th>Implied Quality Expectation</th><th>Traditional IQA Judgment</th></tr>
+    <tr><td>"vintage film grain"</td><td>Noise is <strong>expected</strong></td><td>Noise &rarr; low score</td></tr>
+    <tr><td>"tilt-shift miniature"</td><td>Selective blur is <strong>expected</strong></td><td>Blur &rarr; low score</td></tr>
+    <tr><td>"dreamy soft portrait"</td><td>Soft focus is <strong>expected</strong></td><td>Blur &rarr; low score</td></tr>
+    <tr><td>"glitch art"</td><td>Pixel displacement is <strong>expected</strong></td><td>Severe artifact &rarr; very low</td></tr>
+    <tr><td>"bokeh background"</td><td>Background blur is <strong>expected</strong></td><td>Background blur &rarr; penalized</td></tr>
+    <tr><td>"8K macro photography"</td><td>Extreme sharpness <strong>required</strong></td><td>Sharp &rarr; high score (matches)</td></tr>
+  </table>
+
+  <div class="keypoint">
+    <p><strong>This is not a style classification problem</strong> &mdash; it is an open-domain semantic reasoning problem. Only an LLM can infer quality criteria from arbitrary natural language prompts.</p>
+  </div>
+
+  <h3>TSP-MGS (2024) Exposes the Community's Blind Spot</h3>
+  <p>TSP-MGS <strong>explicitly discards the original prompt</strong> during perceptual quality evaluation, replacing it with a fixed template <code>"A photo of {adj} quality"</code>. This assumes perceptual quality is prompt-independent &mdash; demonstrably wrong for non-photorealistic content.</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 5: Data Construction -->
+<!-- ============================================================ -->
+<div class="slide">
+  <div class="slide-num">5 / 14</div>
+  <h2>Data: Same-Seed Controlled Variant Benchmark</h2>
+
+  <h3>Design Principle</h3>
+  <div class="keypoint">
+    <p><strong>Fix composition. Vary only detail quality.</strong> This yields the cleanest possible signal for studying perceptual sensitivity.</p>
+  </div>
+
+  <h3>Comparison with Existing Benchmarks</h3>
+  <table>
+    <tr><th>Benchmark</th><th>Data Strategy</th><th>Controlled?</th></tr>
+    <tr><td>A-Bench (ICLR'25)</td><td>30K images &rarr; manually pick problematic ones</td><td>No (needle in haystack)</td></tr>
+    <tr><td>AGIQA-3K / AIGIQA-20K</td><td>Different prompts &times; different models</td><td>No (all variables mixed)</td></tr>
+    <tr><td>AGHI-QA (2025)</td><td>400 prompts &times; 10 models, body-part annotation</td><td>No (different images)</td></tr>
+    <tr><td><strong>Ours</strong></td><td><strong>Same seed &rarr; vary CFG / VAR exit</strong></td><td><strong>Yes (only detail quality varies)</strong></td></tr>
+  </table>
+
+  <div class="cols">
+    <div>
+      <h3>Source 1: CFG Scale Variants</h3>
+      <ul>
+        <li>Same seed, same prompt</li>
+        <li>CFG low &rarr; detail loss; CFG high &rarr; over-saturation</li>
+        <li>Composition unchanged, detail quality gradient</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Source 2: VAR Early Exit</h3>
+      <ul>
+        <li>VAR = coarse-to-fine next-scale prediction (NeurIPS'24 Best Paper)</li>
+        <li>Early exit = natural detail deficiency ("not yet finished")</li>
+        <li>More realistic than synthetic degradation or noisy diffusion intermediates</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Annotation</h3>
+  <p>Annotators see same-seed variant groups. Rate: <strong>per-region perceptual quality</strong> + <strong>overall score</strong>. Focus on perceptual quality, not semantic alignment. Annotations naturally encode the <strong>perceptual sensitivity ground truth</strong>.</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 6: Method Overview -->
+<!-- ============================================================ -->
+<div class="slide">
+  <div class="slide-num">6 / 14</div>
+  <h2>Method Overview</h2>
+
+<div class="diagram">Input: (AIGC Image, User Prompt)
+  |
+  |--- LLM (Quality Criteria Reasoner)
+  |      |--- quality_criteria: {acceptable: [...], defects: [...]}
+  |      |--- entities + region importance priors
+  |      '--- sensitivity hints (portrait -> face hypersensitive)
+  |
+  |--- Grounding DINO 1.6 + SAM2 -> region masks
+  |
+  |--- Vision Encoder -> multi-scale features
+  |
+  '--- Criteria-Conditioned, Sensitivity-Aware Quality Model
+         |
+         |  Per region:
+         |  - Extract features (global context + local detail)
+         |  - Condition on criteria (noise OK under "vintage")
+         |  - Output regional perceptual quality score
+         |
+         |--- per-region scores: {face: 0.30, hands: 0.70, bg: 0.90}
+         |
+         '--- Semantic-aware aggregation -> overall: 0.42
+              (face dominates because portrait prompt -> face high-sensitivity)</div>
+
+  <div class="cols">
+    <div>
+      <h3>Key: Two Roles of Prompt</h3>
+      <ol>
+        <li><strong>Quality Criteria</strong> &mdash; "vintage film grain" &rarr; noise acceptable</li>
+        <li><strong>Sensitivity Modulation</strong> &mdash; "portrait" &rarr; face region hypersensitive</li>
+      </ol>
+    </div>
+    <div>
+      <h3>Key: Non-Linear Aggregation</h3>
+      <ul>
+        <li>face 0.3 + bg 0.9 &rarr; overall <strong>0.42</strong> (face dominates)</li>
+        <li>face 0.9 + bg 0.5 &rarr; overall <strong>0.82</strong> (bg barely affects)</li>
+      </ul>
+      <p>The aggregation function itself encodes human perceptual sensitivity.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 7: LLM Necessity -->
+<!-- ============================================================ -->
+<div class="slide">
+  <div class="slide-num">7 / 14</div>
+  <h2>Why LLM is Irreplaceable</h2>
+
+  <p>Inferring quality criteria from arbitrary prompts is an <strong>open-domain semantic reasoning</strong> task:</p>
+
+  <table>
+    <tr><th>Alternative</th><th>Can it reason "tilt-shift &rarr; selective blur OK"?</th></tr>
+    <tr><td>Style Classifier</td><td>No &mdash; can't cover combinatorial semantics</td></tr>
+    <tr><td>CLIP Embedding</td><td>No &mdash; no reasoning, only similarity matching</td></tr>
+    <tr><td>Keyword Matching</td><td>No &mdash; can't understand "dreamy &rarr; soft focus OK"</td></tr>
+    <tr><td><strong>LLM</strong></td><td><strong>Yes</strong> &mdash; can reason from any natural language prompt</td></tr>
+  </table>
+
+  <h3>LLM Output Example</h3>
+<div class="diagram">Prompt: "a dreamy soft portrait of a girl holding vintage flowers, bokeh background"
+
+LLM output:
+{
+  "quality_criteria": {
+    "acceptable": ["soft focus on skin", "low contrast", "background blur"],
+    "defects":    ["facial distortion", "hand deformation", "unnatural texture"]
+  },
+  "entities": ["girl's face", "hands", "vintage flowers", "background"],
+  "sensitivity": {"face": "very high", "hands": "high", "flowers": "medium", "bg": "low"}
+}</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 8: Criteria x Region Synergy -->
+<!-- ============================================================ -->
+<div class="slide">
+  <div class="slide-num">8 / 14</div>
+  <h2>Criteria &times; Region Synergy</h2>
+
+  <p>Quality criteria and region grounding are not independent &mdash; they interact per-region:</p>
+
+  <h3>Example: "dreamy soft portrait of a girl, bokeh background"</h3>
+  <table>
+    <tr><th>Region</th><th>Visual Feature</th><th>Applicable Criteria</th><th>Score Impact</th></tr>
+    <tr><td>Background</td><td>Blurry</td><td>"bokeh expected"</td><td style="color:#5cb85c;">No penalty</td></tr>
+    <tr><td>Face</td><td>Soft focus</td><td>"dreamy &rarr; slight softness OK"</td><td style="color:#e0a000;">Minor penalty</td></tr>
+    <tr><td>Face</td><td>Distorted features</td><td>"facial distortion = defect"</td><td style="color:#d9534f;"><strong>Heavy penalty</strong></td></tr>
+    <tr><td>Hands</td><td>Deformed fingers</td><td>"hand deformation = defect"</td><td style="color:#d9534f;"><strong>Heavy penalty</strong></td></tr>
+  </table>
+
+  <div class="keypoint">
+    <p><strong>Only by knowing both "which region" and "what the prompt expects for this region" can the model score correctly.</strong> Background blur is fine; face blur is not &mdash; in the same image, under the same prompt.</p>
+  </div>
+
+  <h3>Practical Value: Actionable Feedback</h3>
+  <div class="vs">
+    <div class="left">
+      <h3>Existing methods</h3>
+      <p>"Overall quality: 0.6"<br>&rarr; <em>What should I fix?</em></p>
+    </div>
+    <div class="arrow">&rarr;</div>
+    <div class="right">
+      <h3>Our method</h3>
+      <p>"Hands: 0.3 (deformed), Face: 0.85, BG: 0.9"<br>&rarr; <em>Inpaint the hands.</em></p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 9: Related Work Landscape -->
+<!-- ============================================================ -->
+<div class="slide">
+  <div class="slide-num">9 / 14</div>
+  <h2>Related Work Landscape</h2>
+
+  <table>
+    <tr><th>Method</th><th>What It Does</th><th>Gap vs. Ours</th></tr>
+    <tr><td>AGHI-QA (2025)</td><td>Body-part distortion detection for human images</td><td>Human-only; binary labels; no sensitivity modeling</td></tr>
+    <tr><td>A-Bench (ICLR'25)</td><td>LMM quality perception benchmark</td><td>QA format; doesn't measure perceptual impact</td></tr>
+    <tr><td>Q-Ground (ACM MM'24)</td><td>Distortion region grounding</td><td>Locates distortion, doesn't score impact</td></tr>
+    <tr><td>SEAGULL (2024)</td><td>ROI quality + importance scoring</td><td>No sensitivity non-linearity; no AIGC focus</td></tr>
+    <tr><td>Grounding-IQA (ICLR'26)</td><td>Spatial quality descriptions with bbox</td><td>Text output only; no continuous scores; no prompt conditioning</td></tr>
+    <tr><td>MPS (CVPR'24)</td><td>4-dim preference scoring</td><td>Image-level; no region analysis; no sensitivity</td></tr>
+    <tr><td>TSP-MGS (2024)</td><td>Task-specific prompt for perception vs. alignment</td><td>Discards prompt for perception; no region-level</td></tr>
+    <tr><td>VisualQuality-R1 (NeurIPS'25)</td><td>RL-to-rank NR-IQA with reasoning</td><td>Global score; no region sensitivity</td></tr>
+    <tr><td>PaQ-2-PiQ (CVPR'20)</td><td>Patch&rarr;Picture quality mapping</td><td>No semantic-aware weighting; not AIGC</td></tr>
+    <tr><td>Probe-Select (2026.03)</td><td>Early quality prediction from denoising activations</td><td>Single score; no region analysis</td></tr>
+  </table>
+
+  <div class="alert">
+    <p><strong>No existing work</strong> constructs same-seed controlled variants, models the non-linear pixel-change-to-perception gap at the semantic region level, or uses VAR early-exit as a quality gradient data source.</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 10: Key Technical Challenges -->
+<!-- ============================================================ -->
+<div class="slide">
+  <div class="slide-num">10 / 14</div>
+  <h2>Key Technical Challenges</h2>
+
+  <div class="cols">
+    <div>
+      <h3>1. Non-Linear Sensitivity Modeling</h3>
+      <p>The model must learn from data:</p>
+      <ul>
+        <li>Face micro-change &rarr; massive score drop</li>
+        <li>Background micro-change &rarr; negligible</li>
+        <li>Hand deformation &rarr; moderate-to-severe</li>
+      </ul>
+      <p>This should <strong>emerge from annotations</strong>, not be hard-coded.</p>
+    </div>
+    <div>
+      <h3>2. Semantic-Aware Aggregation</h3>
+      <p>Region scores &rarr; overall score is <strong>not</strong> area-weighted average:</p>
+      <ul>
+        <li>face=0.3, bg=0.9 &rarr; overall <strong>~0.4</strong></li>
+        <li>face=0.9, bg=0.5 &rarr; overall <strong>~0.8</strong></li>
+      </ul>
+      <p>The aggregation function encodes perceptual sensitivity.</p>
+    </div>
+  </div>
+
+  <div class="cols" style="margin-top:1em;">
+    <div>
+      <h3>3. Prompt Dual Guidance</h3>
+      <ul>
+        <li><strong>Sensitivity modulation:</strong> "portrait" &rarr; face weight &uarr;</li>
+        <li><strong>Quality criteria:</strong> "vintage" &rarr; noise OK</li>
+      </ul>
+    </div>
+    <div>
+      <h3>4. Tolerance Boundaries</h3>
+      <p>"Vintage film grain" allows noise but <strong>not</strong> color corruption.<br>
+      "Dreamy" allows soft focus but <strong>not</strong> geometric distortion.<br>
+      The model must learn where style tolerance ends and defect begins.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 11: Contribution Summary -->
+<!-- ============================================================ -->
+<div class="slide">
+  <div class="slide-num">11 / 14</div>
+  <h2>Contributions</h2>
+
+  <h3>1. Problem Definition</h3>
+  <p>We identify that pixel-level change &ne; perceptual quality difference in AIGC images, and this gap is <strong>region-dependent</strong>, <strong>semantically-dependent</strong>, and <strong>highly non-linear</strong>. Existing metrics fundamentally fail to model this.</p>
+
+  <h3>2. Controlled-Variant Benchmark (Data)</h3>
+  <p>The <strong>first same-seed controlled variant benchmark</strong> for AIGC quality assessment. Composition is fixed; only detail quality varies (CFG scale variants + VAR early exit). Region-level human perceptual quality annotations provide ground truth for sensitivity modeling.</p>
+
+  <h3>3. Sensitivity-Aware Quality Model (Method)</h3>
+  <ul>
+    <li>Learns human perceptual sensitivity distribution from controlled-variant data</li>
+    <li>Prompt-conditioned quality criteria + sensitivity modulation via LLM reasoning</li>
+    <li>Semantic-aware non-linear region-to-overall aggregation</li>
+  </ul>
+
+  <h3>4. Motivation Experiments</h3>
+  <ul>
+    <li>Demonstrate existing methods (NR-IQA + VLM-based) rank same-seed variants inconsistently with human perception</li>
+    <li>Demonstrate current MLLMs cannot distinguish "small face change (high impact)" from "large background change (low impact)"</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 12: Proposed Experiments -->
+<!-- ============================================================ -->
+<div class="slide">
+  <div class="slide-num">12 / 14</div>
+  <h2>Proposed Experiments</h2>
+
+  <h3>Exp 1: Motivation &mdash; Existing Methods Fail on Controlled Variants</h3>
+  <p>Same-seed image groups ranked by LPIPS / NIQE / TOPIQ / Q-Align / ImageReward vs. human ranking. Measure SRCC/KRCC. Expect: <strong>significant misalignment</strong>, especially for variants with subtle face issues.</p>
+
+  <h3>Exp 2: MLLM Sensitivity Test</h3>
+  <p>Present GPT-4o / Qwen2-VL / Gemini with same-seed pairs: one with face anomaly, one with background blur. Ask: "Which issue is more perceptually severe?" Expect: <strong>near-chance accuracy</strong> on subtle cases.</p>
+
+  <h3>Exp 3: Main Results on Our Benchmark</h3>
+  <p>Compare our model vs. all baselines on same-seed variant ranking. Metrics: SRCC, PLCC, KRCC with human annotations. Report both overall and per-region.</p>
+
+  <h3>Exp 4: Ablation Study</h3>
+  <table>
+    <tr><th>Ablation</th><th>Tests</th></tr>
+    <tr><td>w/o region grounding</td><td>Value of per-region analysis</td></tr>
+    <tr><td>w/o prompt conditioning</td><td>Value of LLM criteria + sensitivity</td></tr>
+    <tr><td>w/o non-linear aggregation</td><td>Value of semantic-aware weighting</td></tr>
+    <tr><td>w/o controlled-variant data</td><td>Value of same-seed training data</td></tr>
+    <tr><td>Uniform weighting vs. learned</td><td>Whether sensitivity naturally emerges</td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 13: Timeline & Feasibility -->
+<!-- ============================================================ -->
+<div class="slide">
+  <div class="slide-num">13 / 14</div>
+  <h2>Feasibility &amp; Risks</h2>
+
+  <h3>Feasibility Assessment</h3>
+  <table>
+    <tr><th>Aspect</th><th>Status</th></tr>
+    <tr><td>Problem novelty</td><td style="color:#5cb85c;"><strong>Confirmed</strong> &mdash; no existing work covers this</td></tr>
+    <tr><td>Data construction</td><td style="color:#5cb85c;"><strong>Feasible</strong> &mdash; CFG variants are trivial; VAR inference is fast</td></tr>
+    <tr><td>Annotation</td><td style="color:#e0a000;"><strong>Moderate cost</strong> &mdash; same-seed groups make annotation more efficient</td></tr>
+    <tr><td>Technical implementation</td><td style="color:#5cb85c;"><strong>Feasible</strong> &mdash; mature components (Grounding DINO, SAM2, VLM backbones)</td></tr>
+    <tr><td>Experimental validation</td><td style="color:#5cb85c;"><strong>Clean design</strong> &mdash; controlled variants enable precise measurement</td></tr>
+    <tr><td>Competition (AGHI-QA)</td><td style="color:#5cb85c;"><strong>Different focus</strong> &mdash; they detect distortion; we model sensitivity</td></tr>
+  </table>
+
+  <h3>Key Risks</h3>
+  <ul>
+    <li><strong>LLM criteria stability</strong> &mdash; quality criteria generation must be consistent; may need few-shot templates</li>
+    <li><strong>Tolerance boundaries</strong> &mdash; distinguishing "style-allowed variation" from "actual defect" is inherently ambiguous</li>
+    <li><strong>Annotation agreement</strong> &mdash; region-level perceptual scores may have lower inter-annotator agreement than global scores</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<!-- SLIDE 14: Summary -->
+<!-- ============================================================ -->
+<div class="slide" style="justify-content:center;">
+  <div class="slide-num">14 / 14</div>
+  <h2>Summary</h2>
+
+  <div class="keypoint" style="font-size:1.05rem; line-height:1.8;">
+    <p>
+      <strong>Problem:</strong> Pixel change &ne; perceptual quality difference. The gap is region-dependent, semantically-dependent, and non-linear. Current methods fail to model this.<br><br>
+      <strong>Data:</strong> First controlled-variant AIGC quality benchmark &mdash; same seed, only detail quality varies &mdash; with region-level human perceptual annotations.<br><br>
+      <strong>Method:</strong> LLM-reasoned quality criteria + region grounding + sensitivity-aware non-linear quality model trained on controlled variants.<br><br>
+      <strong>Impact:</strong> A new paradigm for AIGC quality assessment &mdash; from "how much changed" to "how much humans care."
+    </p>
+  </div>
+
+  <div class="ref" style="margin-top:2em;">
+    <strong>Key References:</strong>
+    A-Bench [Zhang et al., ICLR 2025] &bull;
+    AGHI-QA [2025] &bull;
+    VAR [Tian et al., NeurIPS 2024 Best Paper] &bull;
+    Infinity [Han et al., CVPR 2025 Oral] &bull;
+    TSP-MGS [2024] &bull;
+    MPS [Zhang et al., CVPR 2024] &bull;
+    Q-Ground [ACM MM 2024] &bull;
+    SEAGULL [2024] &bull;
+    Grounding-IQA [ICLR 2026] &bull;
+    VisualQuality-R1 [NeurIPS 2025 Spotlight] &bull;
+    Probe-Select [2026] &bull;
+    PaQ-2-PiQ [CVPR 2020] &bull;
+    MANIQA [CVPRW 2022] &bull;
+    TOPIQ [IEEE TIP 2024] &bull;
+    Grounding DINO 1.6 [IDEA Research 2025]
+  </div>
+</div>
+
+</body>
+</html>

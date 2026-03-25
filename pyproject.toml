@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iqa"
+version = "0.1.0"
+description = "Query-Guided Region-Aware Perceptual Image Quality Assessment for AIGC"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
+    "transformers>=4.37.0",
+    "accelerate>=0.25.0",
+    "peft>=0.7.0",               # LoRA
+    "omegaconf>=2.3.0",          # Config management
+    "wandb>=0.16.0",             # Experiment tracking
+    "scipy>=1.11.0",             # SRCC, PLCC computation
+    "pillow>=10.0.0",
+    "opencv-python>=4.8.0",
+    "tqdm>=4.66.0",
+    "einops>=0.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "ruff>=0.1.0",
+    "ipython>=8.0.0",
+    "jupyter>=1.0.0",
+    "matplotlib>=3.8.0",
+]
+grounding = [
+    "groundingdino-py>=0.4.0",   # Grounding DINO
+    "segment-anything-2",         # SAM 2
+]
+iqa = [
+    "pyiqa>=0.1.10",             # IQA-PyTorch (TOPIQ, NIQE, BRISQUE, etc.)
+]
+vlm = [
+    "openai>=1.0.0",             # OpenAI API (GPT-5.4, GPT-4.1)
+    "google-generativeai>=0.8.0", # Gemini API (placeholder)
+    "anthropic>=0.40.0",          # Anthropic API (placeholder)
+]
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

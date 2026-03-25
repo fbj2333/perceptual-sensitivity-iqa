@@ -1,0 +1,82 @@
+# Pilot evaluation config: test existing models on perceptual sensitivity task
+# Usage: python scripts/eval/pilot_eval.py --config configs/eval/pilot.yaml
+
+experiment:
+  name: "pilot_v1"
+  output_dir: "experiments/pilot_eval"
+
+data:
+  manifest: "data/pilot/manifest.json"
+  max_image_size: null  # null = original size; set e.g. 1024 to cap long edge
+
+models:
+  iqa:
+    enabled: true
+    device: "cuda"      # "cpu" for local debug
+    nr_models:
+      # Handcrafted (natural image statistics baseline)
+      - "niqe"
+      - "brisque"
+      # Deep NR-IQA (current SOTA, subsume DBCNN/HyperIQA)
+      - "topiq_nr"
+      - "musiq"
+      # ViT patch-weighted attention
+      - "maniqa"
+      # CLIP-guided (language-aware IQA, bridge between traditional and VLM)
+      - "clipiqa+"
+      - "liqe"
+      # MLLM-based IQA (critical: proves even IQA-specialized MLLM fails)
+      - "qalign"
+    fr_models:
+      - "lpips"
+      - "dists"
+
+  vlm:
+    enabled: true
+    models:
+      # === Fully implemented ===
+      - name: "gpt-5.4"
+        provider: "openai"
+        model_id: "gpt-5.4"
+        api_key_env: "OPENAI_API_KEY"
+        max_tokens: 1500
+        temperature: 0.1
+      - name: "gpt-4.1"
+        provider: "openai"
+        model_id: "gpt-4.1"
+        api_key_env: "OPENAI_API_KEY"
+        max_tokens: 1500
+        temperature: 0.1
+      - name: "Qwen3-VL-8B"
+        provider: "local"
+        model_id: "Qwen/Qwen3-VL-8B-Instruct"
+        device: "cuda"
+        max_tokens: 1500
+      # === Placeholder (not implemented yet) ===
+      - name: "gemini-2.5-flash"
+        provider: "google"
+        model_id: "gemini-2.5-flash"
+        api_key_env: "GOOGLE_API_KEY"
+        max_tokens: 1500
+        temperature: 0.1
+      - name: "claude-sonnet-4-5"
+        provider: "anthropic"
+        model_id: "claude-sonnet-4-5-20250929"
+        api_key_env: "ANTHROPIC_API_KEY"
+        max_tokens: 1500
+        temperature: 0.1
+    prompts:
+      - "holistic"       # Independent quality rating per image
+      - "comparative"    # Paired comparison with region awareness
+      - "sensitivity"    # Sensitivity probing (core hypothesis test)
+    rate_limit_delay: 2.0   # seconds between API calls
+    max_retries: 3
+    retry_delay: 10.0       # base delay for exponential backoff
+
+output:
+  save_json: true
+  save_csv: true
+
+logging:
+  level: "INFO"
+  log_file: null  # null = auto-generate in output_dir

@@ -1,0 +1,24 @@
+# Diffusion denoising sequence data generation config
+# Usage: python scripts/data/gen_denoising_seq.py --config configs/data/denoising.yaml
+
+model:
+  name: "stabilityai/stable-diffusion-xl-base-1.0"
+  dtype: float16
+
+generation:
+  num_prompts: 500             # Number of unique prompts
+  seeds_per_prompt: 5          # Seeds per prompt
+  # Steps to capture (from total 50 steps)
+  capture_steps: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+  total_steps: 50
+  guidance_scale: 7.5
+  resolution: [1024, 1024]
+
+prompts:
+  source: "agiqa3k"           # Use AGIQA-3K prompts, or "custom" for custom list
+  # custom_file: "data/prompts.txt"
+
+output:
+  dir: "data/raw/denoising_sequences"
+  format: "png"
+  save_latents: false          # Whether to also save latent representations

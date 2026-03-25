@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AIGC 感知灵敏度感知的图像质量评估</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 17px; scroll-behavior: smooth; }
+  body { font-family: 'Noto Serif SC', 'Songti SC', 'Georgia', serif; color: #1a1a2e; background: #fff; }
+
+  /* ── Navigation ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: #1b263b; padding: 0; display: flex; align-items: stretch;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    overflow-x: auto; white-space: nowrap;
+  }
+  nav a {
+    color: #c8d6e5; text-decoration: none; font-size: 0.78rem;
+    padding: 12px 16px; transition: all 0.2s; border-bottom: 2px solid transparent;
+    font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    display: inline-block; flex-shrink: 0;
+  }
+  nav a:hover { background: #415a77; color: #fff; }
+  nav a.active, nav a:target { border-bottom-color: #e0a000; color: #fff; background: #415a77; }
+  nav .nav-title {
+    color: #e0a000; font-weight: 700; font-size: 0.82rem;
+    padding: 12px 20px; border-right: 1px solid #415a77; flex-shrink: 0;
+  }
+
+  /* ── Slide system ── */
+  .slide {
+    min-height: 100vh; padding: 80px 10vw 60px;
+    display: flex; flex-direction: column; justify-content: center;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  .slide:nth-child(odd) { background: #fff; }
+  .slide:nth-child(even) { background: #f8f9fc; }
+
+  /* ── Typography ── */
+  h1 { font-size: 2.2rem; font-weight: 700; color: #0d1b2a; margin-bottom: 0.3em; line-height: 1.3; }
+  h2 { font-size: 1.5rem; font-weight: 700; color: #1b263b; margin-bottom: 0.8em; border-bottom: 2px solid #415a77; padding-bottom: 0.25em;
+       font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+  h3 { font-size: 1.05rem; font-weight: 700; color: #415a77; margin: 1.1em 0 0.4em;
+       font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+  p, li { font-size: 0.95rem; line-height: 1.8; color: #333; }
+  .subtitle { font-size: 1.05rem; color: #555; margin-bottom: 1.5em; }
+  .venue { font-size: 0.92rem; color: #888; }
+  code { font-family: 'Menlo', 'Consolas', monospace; background: #f0f2f5; padding: 2px 6px; border-radius: 3px; font-size: 0.85em; }
+
+  /* ── Lists ── */
+  ul, ol { padding-left: 1.5em; margin: 0.5em 0; }
+  li { margin-bottom: 0.3em; }
+  li::marker { color: #415a77; }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 0.85rem; }
+  th { background: #1b263b; color: #fff; padding: 10px 12px; text-align: left; font-weight: 600;
+       font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+  td { padding: 8px 12px; border-bottom: 1px solid #ddd; }
+  tr:nth-child(even) td { background: #f4f6fa; }
+
+  /* ── Highlight boxes ── */
+  .keypoint {
+    background: #eef2ff; border-left: 4px solid #415a77;
+    padding: 14px 18px; margin: 1em 0; border-radius: 0 6px 6px 0;
+  }
+  .keypoint p { margin: 0; }
+  .alert {
+    background: #fff3e6; border-left: 4px solid #e07000;
+    padding: 14px 18px; margin: 1em 0; border-radius: 0 6px 6px 0;
+  }
+
+  /* ── Diagram ── */
+  .diagram {
+    background: #1b263b; color: #c8d6e5; padding: 22px 26px;
+    border-radius: 8px; margin: 1em 0;
+    font-family: 'Menlo', 'Consolas', monospace; font-size: 0.78rem;
+    line-height: 1.6; overflow-x: auto; white-space: pre;
+  }
+
+  /* ── Two-column ── */
+  .cols { display: flex; gap: 36px; margin: 1em 0; }
+  .cols > div { flex: 1; }
+  @media (max-width: 768px) { .cols { flex-direction: column; gap: 16px; } }
+
+  /* ── VS comparison ── */
+  .vs { display: flex; align-items: stretch; gap: 16px; margin: 1em 0; }
+  .vs > div { flex: 1; padding: 14px; border-radius: 8px; }
+  .vs .bad { background: #ffeaea; border: 1px solid #d9534f; }
+  .vs .good { background: #eafff0; border: 1px solid #5cb85c; }
+  .vs .arrow { display: flex; align-items: center; font-size: 1.6rem; color: #999; flex: 0; }
+
+  /* ── Section indicator ── */
+  .section-tag {
+    display: inline-block; font-size: 0.72rem; color: #fff; background: #415a77;
+    padding: 3px 10px; border-radius: 12px; margin-bottom: 0.8em;
+    font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  }
+
+  /* ── References ── */
+  .ref { font-size: 0.75rem; color: #888; margin-top: 2em; line-height: 1.5; }
+
+  /* ── Print ── */
+  @media print {
+    nav { display: none; }
+    .slide { min-height: auto; padding: 30px 40px; page-break-after: always; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Navigation ── -->
+<nav>
+  <span class="nav-title">AIGC&nbsp;IQA</span>
+  <a href="#title">首页</a>
+  <a href="#motivation">研究动机</a>
+  <a href="#evidence">A-Bench 证据</a>
+  <a href="#prompt">Prompt 条件化</a>
+  <a href="#data">数据构造</a>
+  <a href="#method">方法概述</a>
+  <a href="#llm">LLM 必要性</a>
+  <a href="#synergy">区域协同</a>
+  <a href="#related">相关工作</a>
+  <a href="#challenge">技术挑战</a>
+  <a href="#contribution">贡献总结</a>
+  <a href="#experiment">实验设计</a>
+  <a href="#feasibility">可行性</a>
+  <a href="#summary">总结</a>
+</nav>
+
+<!-- ============================================================ -->
+<!-- 1. 标题页 -->
+<!-- ============================================================ -->
+<div class="slide" id="title" style="text-align:center;">
+  <h1>面向 AIGC 的感知灵敏度感知<br>图像质量评估</h1>
+  <p class="subtitle">像素变化 &ne; 感知质量差异：一个区域依赖、语义驱动的非线性 Gap</p>
+  <p class="venue" style="margin-top:2em;">文献调研与研究方案报告</p>
+  <p class="venue">2026 年 3 月</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 2. 研究动机 -->
+<!-- ============================================================ -->
+<div class="slide" id="motivation">
+  <span class="section-tag">一、研究动机</span>
+  <h2>核心问题</h2>
+
+  <div class="keypoint">
+    <p><strong>像素级变化量 &ne; 人类感知质量差异。</strong>这两者之间的 gap 是区域依赖、语义依赖、且高度非线性的。</p>
+  </div>
+
+  <p>同一 seed、同一 prompt 生成的两张图像，构图完全一致，但细节不同：</p>
+
+  <div class="vs">
+    <div class="bad">
+      <h3>面部：微妙的眼部畸变</h3>
+      <p>像素差异：<strong>~2%</strong><br>
+      感知影响：<strong>恐怖谷效应，极其严重</strong><br>
+      人类评分变化：<strong>&minus;40 分</strong></p>
+    </div>
+    <div class="arrow">&harr;</div>
+    <div class="good">
+      <h3>背景：轻微锐度下降</h3>
+      <p>像素差异：<strong>~5%</strong><br>
+      感知影响：<strong>几乎不可察觉</strong><br>
+      人类评分变化：<strong>&minus;2 分</strong></p>
+    </div>
+  </div>
+
+  <p>现有 IQA 方法（LPIPS、NIQE、TOPIQ，甚至基于 VLM 的方法）本质上在衡量<strong>"变化了多少"</strong>，而非<strong>"这个变化对人来说重要吗"</strong>。</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 3. A-Bench 证据 -->
+<!-- ============================================================ -->
+<div class="slide" id="evidence">
+  <span class="section-tag">二、现有模型的缺陷证据</span>
+  <h2>A-Bench (ICLR 2025)：LMM 质量感知的系统性失败</h2>
+
+  <p>A-Bench 测试了 23 个大型多模态模型在 2,864 张 AIGC 图像（16 个 T2I 模型）上的评估能力：</p>
+
+  <table>
+    <tr><th>评估维度</th><th>最佳 LMM<br>(Qwen2-VL-72B)</th><th>最差人类</th><th>差距</th></tr>
+    <tr><td>语义理解</td><td>86.02%</td><td>88.50%</td><td style="color:#5cb85c;">&minus;2.5%</td></tr>
+    <tr><td><strong>质量感知（整体）</strong></td><td><strong>68.99%</strong></td><td><strong>83.61%</strong></td><td style="color:#d9534f;"><strong>&minus;14.6%</strong></td></tr>
+    <tr><td>&emsp;技术质量</td><td>74.22%</td><td>94.32%</td><td style="color:#d9534f;">&minus;20.1%</td></tr>
+    <tr><td>&emsp;美学质量</td><td>60.31%</td><td>84.49%</td><td style="color:#d9534f;">&minus;24.2%</td></tr>
+    <tr><td>&emsp;生成畸变</td><td>70.23%</td><td>86.25%</td><td style="color:#d9534f;">&minus;16.0%</td></tr>
+  </table>
+
+  <div class="keypoint">
+    <p><strong>关键结论：</strong>最差的人类标注者仍比最好的 LMM 高出 14.6%。质量感知是 LMM 的根本性短板，不是模型规模问题。</p>
+  </div>
+
+  <div class="alert">
+    <p><strong>A-Bench 未覆盖的问题：</strong>它问的是"有没有噪声？"（是/否），即<strong>"图像有没有某种问题"</strong>。它不回答<strong>"这个问题对人的感知影响有多大"</strong>——这正是我们的切入点。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 4. Prompt 条件化 -->
+<!-- ============================================================ -->
+<div class="slide" id="prompt">
+  <span class="section-tag">三、核心洞察</span>
+  <h2>AIGC 中感知质量是 Prompt 条件化的</h2>
+
+  <p>同样的视觉特征，在不同 prompt 下质量含义完全不同：</p>
+
+  <table>
+    <tr><th>Prompt 信号</th><th>隐含的质量期望</th><th>传统 IQA 判定</th></tr>
+    <tr><td>"vintage film grain"</td><td>噪点是<strong>期望特征</strong></td><td>噪声 &rarr; 低分</td></tr>
+    <tr><td>"tilt-shift miniature"</td><td>选择性模糊是<strong>期望特征</strong></td><td>模糊 &rarr; 低分</td></tr>
+    <tr><td>"dreamy soft portrait"</td><td>柔焦是<strong>期望特征</strong></td><td>模糊 &rarr; 低分</td></tr>
+    <tr><td>"glitch art"</td><td>像素错位是<strong>期望特征</strong></td><td>严重伪影 &rarr; 极低分</td></tr>
+    <tr><td>"bokeh background"</td><td>背景模糊是<strong>期望特征</strong></td><td>背景模糊 &rarr; 扣分</td></tr>
+    <tr><td>"8K macro photography"</td><td>要求极高清晰度</td><td>锐利 &rarr; 高分（恰好一致）</td></tr>
+  </table>
+
+  <div class="keypoint">
+    <p><strong>这不是风格分类问题，而是开放域语义理解问题。</strong>只有 LLM 能从任意自然语言 prompt 中推理出质量评判准则。</p>
+  </div>
+
+  <h3>TSP-MGS (2024) 暴露了社区盲区</h3>
+  <p>TSP-MGS 在评估感知质量时，<strong>明确用固定模板 <code>"A photo of {adj} quality"</code> 替代用户原始 prompt</strong>——假设感知质量与 prompt 无关。对非写实内容系统性误判。</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 5. 数据构造 -->
+<!-- ============================================================ -->
+<div class="slide" id="data">
+  <span class="section-tag">四、数据构造</span>
+  <h2>同 Seed 受控变体数据库</h2>
+
+  <div class="keypoint">
+    <p><strong>设计原则：锁定构图，只变细节质量。</strong>产生最干净的感知灵敏度研究信号。</p>
+  </div>
+
+  <h3>与现有数据集对比</h3>
+  <table>
+    <tr><th>数据集</th><th>数据策略</th><th>是否受控</th></tr>
+    <tr><td>A-Bench (ICLR'25)</td><td>30K 图 &rarr; 人工挑选有问题的图</td><td>否（大海捞针）</td></tr>
+    <tr><td>AGIQA-3K / AIGIQA-20K</td><td>不同 prompt &times; 不同模型</td><td>否（所有变量混杂）</td></tr>
+    <tr><td>AGHI-QA (2025)</td><td>400 prompt &times; 10 模型，身体部位标注</td><td>否（不同图像）</td></tr>
+    <tr><td><strong>本方案</strong></td><td><strong>同 seed &rarr; 变 CFG / VAR 退出</strong></td><td><strong>是（仅细节质量变化）</strong></td></tr>
+  </table>
+
+  <div class="cols">
+    <div>
+      <h3>数据源 1：CFG Scale 变体</h3>
+      <ul>
+        <li>同 seed、同 prompt，不同 CFG scale</li>
+        <li>低 CFG &rarr; 细节缺失；高 CFG &rarr; 过饱和/artifacts</li>
+        <li>构图不变，细节完成度连续渐变</li>
+      </ul>
+    </div>
+    <div>
+      <h3>数据源 2：VAR 提前退出</h3>
+      <ul>
+        <li>VAR = coarse-to-fine 逐级生成（NeurIPS'24 最佳论文）</li>
+        <li>提前退出 = 自然的细节缺失（"还没画完"）</li>
+        <li>比合成退化或 diffusion 噪声中间步更接近真实 AIGC 质量问题</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>标注方式</h3>
+  <p>标注者看到同 seed 的一组变体 &rarr; 评估各变体<strong>整体感知质量分 + 区域感知质量分</strong> &rarr; 标注数据天然编码<strong>感知灵敏度 ground truth</strong>（脸部变化导致 40 分差 vs 背景变化导致 2 分差）。</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 6. 方法概述 -->
+<!-- ============================================================ -->
+<div class="slide" id="method">
+  <span class="section-tag">五、方法概述</span>
+  <h2>整体架构</h2>
+
+<div class="diagram">输入: (AIGC 图像, 用户 Prompt)
+  │
+  ├─→ LLM (质量准则推理器)
+  │     ├─→ quality_criteria: {可接受: [...], 缺陷: [...]}
+  │     ├─→ 实体列表 + 区域重要性先验
+  │     └─→ 感知灵敏度提示 (portrait → 面部高敏感)
+  │
+  ├─→ Grounding DINO 1.6 + SAM2 → 区域 mask
+  │
+  ├─→ 视觉编码器 → 多尺度特征
+  │
+  └─→ 准则条件化 + 灵敏度感知的质量模型
+        │
+        │  对每个区域:
+        │  · 提取区域特征（全局上下文 + 局部细节）
+        │  · 结合准则条件评分（噪点在 vintage 下不扣分）
+        │  · 输出区域感知质量分
+        │
+        ├─→ 区域分: {面部: 0.30, 手部: 0.70, 背景: 0.90}
+        │
+        └─→ 语义感知聚合 → 整体分: 0.42
+              (面部低分主导整体，因为 portrait prompt → 面部高灵敏度)</div>
+
+  <div class="cols">
+    <div>
+      <h3>Prompt 的双重角色</h3>
+      <ol>
+        <li><strong>质量准则定义</strong>—— "vintage film grain" &rarr; 噪点可接受</li>
+        <li><strong>灵敏度调制</strong>—— "portrait" &rarr; 面部区域灵敏度极高</li>
+      </ol>
+    </div>
+    <div>
+      <h3>非线性聚合</h3>
+      <ul>
+        <li>面部 0.3 + 背景 0.9 &rarr; 整体 <strong>0.42</strong>（面部主导）</li>
+        <li>面部 0.9 + 背景 0.5 &rarr; 整体 <strong>0.82</strong>（背景影响小）</li>
+      </ul>
+      <p>聚合函数本身编码了人类感知灵敏度偏好。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 7. LLM 必要性 -->
+<!-- ============================================================ -->
+<div class="slide" id="llm">
+  <span class="section-tag">五、方法概述（续）</span>
+  <h2>为什么 LLM 不可替代</h2>
+
+  <p>从任意 prompt 推理质量准则是<strong>开放域语义推理</strong>任务：</p>
+
+  <table>
+    <tr><th>替代方案</th><th>能推理 "tilt-shift &rarr; 选择性模糊可接受" 吗？</th></tr>
+    <tr><td>风格分类器</td><td>不能——无法覆盖组合语义</td></tr>
+    <tr><td>CLIP 嵌入</td><td>不能——只做相似度匹配，不具备推理能力</td></tr>
+    <tr><td>关键词匹配</td><td>不能——无法理解 "dreamy" 暗示"允许柔焦"</td></tr>
+    <tr><td><strong>LLM</strong></td><td><strong>可以</strong>——从任意自然语言推理质量准则</td></tr>
+  </table>
+
+  <h3>LLM 输出示例</h3>
+<div class="diagram">Prompt: "a dreamy soft portrait of a girl holding vintage flowers, bokeh background"
+
+LLM 输出:
+{
+  "quality_criteria": {
+    "acceptable": ["皮肤柔焦", "低对比度", "背景模糊"],
+    "defects":    ["面部畸变", "手部变形", "不自然皮肤纹理"]
+  },
+  "entities": ["女孩面部", "手部", "复古花束", "背景"],
+  "sensitivity": {"面部": "极高", "手部": "高", "花束": "中", "背景": "低"}
+}</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 8. 区域协同 -->
+<!-- ============================================================ -->
+<div class="slide" id="synergy">
+  <span class="section-tag">五、方法概述（续）</span>
+  <h2>准则 &times; 区域协同效应</h2>
+
+  <p>质量准则与区域定位不是独立的——它们在每个区域上交互：</p>
+
+  <h3>示例："dreamy soft portrait of a girl, bokeh background"</h3>
+  <table>
+    <tr><th>区域</th><th>视觉特征</th><th>适用准则</th><th>评分影响</th></tr>
+    <tr><td>背景</td><td>模糊</td><td>"bokeh expected"</td><td style="color:#5cb85c;">不扣分</td></tr>
+    <tr><td>面部</td><td>柔焦</td><td>"dreamy &rarr; 轻微柔焦可接受"</td><td style="color:#e0a000;">轻微扣分</td></tr>
+    <tr><td>面部</td><td>五官畸变</td><td>"面部畸变 = 缺陷"</td><td style="color:#d9534f;"><strong>严重扣分</strong></td></tr>
+    <tr><td>手部</td><td>手指变形</td><td>"手部变形 = 缺陷"</td><td style="color:#d9534f;"><strong>严重扣分</strong></td></tr>
+  </table>
+
+  <div class="keypoint">
+    <p><strong>只有同时知道"这是哪个区域"和"prompt 对这个区域的期望是什么"才能正确评分。</strong>同一张图中，背景模糊不扣分，面部模糊要扣分。</p>
+  </div>
+
+  <h3>实用价值：可操作的反馈</h3>
+  <div class="vs">
+    <div class="bad">
+      <h3>现有方法</h3>
+      <p>"整体质量: 0.6"<br>&rarr; <em>该改哪里？不知道。</em></p>
+    </div>
+    <div class="arrow">&rarr;</div>
+    <div class="good">
+      <h3>我们的方法</h3>
+      <p>"手部: 0.3 (变形), 面部: 0.85, 背景: 0.9"<br>&rarr; <em>对手部做 inpainting。</em></p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 9. 相关工作 -->
+<!-- ============================================================ -->
+<div class="slide" id="related">
+  <span class="section-tag">六、相关工作</span>
+  <h2>相关工作全景</h2>
+
+  <table>
+    <tr><th>方法</th><th>核心贡献</th><th>与本方案的差距</th></tr>
+    <tr><td>AGHI-QA (2025)</td><td>AI 人物图像身体部位畸变检测</td><td>仅限人物；二值标注；不建模灵敏度</td></tr>
+    <tr><td>A-Bench (ICLR'25)</td><td>LMM 质量感知能力基准测试</td><td>QA 形式；不衡量感知影响大小</td></tr>
+    <tr><td>Q-Ground (ACM MM'24)</td><td>失真区域 grounding</td><td>定位失真但不评估影响</td></tr>
+    <tr><td>SEAGULL (2024)</td><td>ROI 质量 + 重要性评分</td><td>不建模灵敏度非线性；非 AIGC 专用</td></tr>
+    <tr><td>Grounding-IQA (ICLR'26)</td><td>空间质量描述 + bbox</td><td>仅文本输出；无连续分数；无 prompt 条件化</td></tr>
+    <tr><td>MPS (CVPR'24)</td><td>四维偏好评分</td><td>全图级；无区域分析；无灵敏度建模</td></tr>
+    <tr><td>TSP-MGS (2024)</td><td>分离 perception/alignment 评估</td><td>感知评估丢弃 prompt；无区域级</td></tr>
+    <tr><td>VisualQuality-R1 (NeurIPS'25)</td><td>RL-to-Rank IQA + 推理</td><td>全图分数；无区域灵敏度</td></tr>
+    <tr><td>PaQ-2-PiQ (CVPR'20)</td><td>Patch&rarr;Picture 质量映射</td><td>无语义感知权重；非 AIGC</td></tr>
+    <tr><td>Probe-Select (2026.03)</td><td>Diffusion 中间步早期质量预测</td><td>单一分数；无区域分析</td></tr>
+  </table>
+
+  <div class="alert">
+    <p><strong>无任何已有工作</strong>构建了同 seed 受控变体数据集、在 AIGC 语义区域层面建模像素变化→感知差异的非线性 gap、或使用 VAR 提前退出作为质量梯度数据源。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 10. 技术挑战 -->
+<!-- ============================================================ -->
+<div class="slide" id="challenge">
+  <span class="section-tag">七、技术挑战</span>
+  <h2>核心技术挑战</h2>
+
+  <div class="cols">
+    <div>
+      <h3>1. 非线性灵敏度建模</h3>
+      <p>模型需从数据中学会：</p>
+      <ul>
+        <li>面部微小变化 &rarr; 大幅扣分（恐怖谷）</li>
+        <li>背景微小变化 &rarr; 几乎不扣分</li>
+        <li>手部变形 &rarr; 中到重度扣分</li>
+      </ul>
+      <p>灵敏度分布应从标注中<strong>自然涌现</strong>，非预设规则。</p>
+    </div>
+    <div>
+      <h3>2. 语义感知聚合</h3>
+      <p>区域分 &rarr; 整体分<strong>不是</strong>面积加权平均：</p>
+      <ul>
+        <li>面部=0.3, 背景=0.9 &rarr; 整体 <strong>~0.4</strong></li>
+        <li>面部=0.9, 背景=0.5 &rarr; 整体 <strong>~0.8</strong></li>
+      </ul>
+      <p>聚合函数编码感知灵敏度偏好。</p>
+    </div>
+  </div>
+
+  <div class="cols" style="margin-top:0.8em;">
+    <div>
+      <h3>3. Prompt 双重引导</h3>
+      <ul>
+        <li><strong>灵敏度调制：</strong>"portrait" &rarr; 面部权重 &uarr;</li>
+        <li><strong>质量准则：</strong>"vintage" &rarr; 噪点可接受</li>
+      </ul>
+    </div>
+    <div>
+      <h3>4. 容忍度边界</h3>
+      <p>"vintage film grain" 允许噪点但<strong>不允许</strong>色彩严重失真。<br>
+      "dreamy" 允许柔焦但<strong>不允许</strong>几何变形。<br>
+      模型需学会风格容忍与真实缺陷的边界。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 11. 贡献总结 -->
+<!-- ============================================================ -->
+<div class="slide" id="contribution">
+  <span class="section-tag">八、贡献</span>
+  <h2>贡献总结</h2>
+
+  <h3>1. 问题定义</h3>
+  <p>指出 AIGC 质量评估中"像素变化 &ne; 感知差异"的 gap——该 gap 区域依赖、语义依赖、高度非线性。现有指标根本无法捕捉这一关系。</p>
+
+  <h3>2. 受控变体数据集（数据贡献）</h3>
+  <p><strong>首个同 seed 受控变体 AIGC 质量评估 benchmark</strong>——构图锁定，仅细节质量变化（CFG scale 变体 + VAR 提前退出）。区域级人工感知质量标注提供灵敏度 ground truth。</p>
+
+  <h3>3. 灵敏度感知质量模型（方法贡献）</h3>
+  <ul>
+    <li>从受控变体标注数据中学习人类感知灵敏度的非均匀分布</li>
+    <li>LLM 推理 prompt 条件化质量准则 + 灵敏度调制</li>
+    <li>语义感知的区域分非线性聚合</li>
+  </ul>
+
+  <h3>4. 验证实验</h3>
+  <ul>
+    <li>证明现有方法（NR-IQA + VLM-based）在同 seed 变体上排序与人类感知严重不一致</li>
+    <li>证明当前 MLLM 无法区分"面部微小变化（影响大）"和"背景大幅变化（影响小）"</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<!-- 12. 实验设计 -->
+<!-- ============================================================ -->
+<div class="slide" id="experiment">
+  <span class="section-tag">九、实验设计</span>
+  <h2>拟定实验方案</h2>
+
+  <h3>实验 1：Motivation——现有方法在受控变体上的失败</h3>
+  <p>同 seed 图像组分别用 LPIPS / NIQE / TOPIQ / Q-Align / ImageReward 排序，对比人类排序。度量 SRCC/KRCC。预期：显著不一致，尤其在面部微妙变化的变体上。</p>
+
+  <h3>实验 2：MLLM 灵敏度测试</h3>
+  <p>向 GPT-4o / Qwen2-VL / Gemini 展示同 seed 图像对（一张面部异常，一张背景模糊），问"哪个问题更影响观感？"预期：接近随机水平。</p>
+
+  <h3>实验 3：主实验——在自建 Benchmark 上的表现</h3>
+  <p>我们的模型 vs 所有基线在同 seed 变体排序上的 SRCC/PLCC/KRCC。同时报告整体分和区域分。</p>
+
+  <h3>实验 4：消融实验</h3>
+  <table>
+    <tr><th>消融项</th><th>验证内容</th></tr>
+    <tr><td>移除区域 grounding</td><td>区域级分析的价值</td></tr>
+    <tr><td>移除 prompt 条件化</td><td>LLM 准则 + 灵敏度调制的价值</td></tr>
+    <tr><td>移除非线性聚合</td><td>语义感知加权的价值</td></tr>
+    <tr><td>移除受控变体训练数据</td><td>同 seed 数据的价值</td></tr>
+    <tr><td>均匀权重 vs 学习权重</td><td>灵敏度是否自然涌现</td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<!-- 13. 可行性 -->
+<!-- ============================================================ -->
+<div class="slide" id="feasibility">
+  <span class="section-tag">十、可行性评估</span>
+  <h2>可行性与风险</h2>
+
+  <table>
+    <tr><th>评估维度</th><th>状态</th></tr>
+    <tr><td>问题新颖性</td><td style="color:#5cb85c;"><strong>已确认</strong>——无已有工作覆盖</td></tr>
+    <tr><td>数据构造</td><td style="color:#5cb85c;"><strong>可行</strong>——CFG 变体生成简单；VAR 推理快速</td></tr>
+    <tr><td>标注成本</td><td style="color:#e0a000;"><strong>中等</strong>——同 seed 分组使标注更高效</td></tr>
+    <tr><td>技术实现</td><td style="color:#5cb85c;"><strong>可行</strong>——成熟组件（Grounding DINO, SAM2, VLM backbone）</td></tr>
+    <tr><td>实验验证</td><td style="color:#5cb85c;"><strong>设计清晰</strong>——受控变体使测量精确</td></tr>
+    <tr><td>与 AGHI-QA 竞争</td><td style="color:#5cb85c;"><strong>方向不同</strong>——他们检测畸变，我们建模灵敏度</td></tr>
+  </table>
+
+  <h3>主要风险</h3>
+  <ul>
+    <li><strong>LLM 准则稳定性</strong>——准则生成需要一致性，可能需要 few-shot 模板或微调</li>
+    <li><strong>容忍度边界模糊</strong>——"风格允许的变异"与"真实缺陷"本身存在模糊地带</li>
+    <li><strong>标注一致性</strong>——区域级感知评分的标注者间一致性可能低于全图评分</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<!-- 14. 总结 -->
+<!-- ============================================================ -->
+<div class="slide" id="summary" style="justify-content:center;">
+  <span class="section-tag">总结</span>
+  <h2>总结</h2>
+
+  <div class="keypoint" style="font-size:0.98rem; line-height:1.9;">
+    <p>
+      <strong>问题：</strong>像素变化 &ne; 感知质量差异。这一 gap 是区域依赖、语义依赖、高度非线性的。现有方法无法建模。<br><br>
+      <strong>数据：</strong>首个同 seed 受控变体 AIGC 质量 benchmark——构图锁定，仅变细节质量——配合区域级人工感知标注。<br><br>
+      <strong>方法：</strong>LLM 推理质量准则 + 区域 grounding + 灵敏度感知的非线性质量模型，从受控变体中学习人类感知灵敏度分布。<br><br>
+      <strong>意义：</strong>将 AIGC 质量评估从"变化了多少"推进到"人类是否在意这个变化"。
+    </p>
+  </div>
+
+  <div class="ref" style="margin-top:2em;">
+    <strong>核心参考文献：</strong>
+    A-Bench [Zhang et al., ICLR 2025] &bull;
+    AGHI-QA [2025] &bull;
+    VAR [Tian et al., NeurIPS 2024 Best Paper] &bull;
+    Infinity [Han et al., CVPR 2025 Oral] &bull;
+    TSP-MGS [2024] &bull;
+    MPS [Zhang et al., CVPR 2024] &bull;
+    Q-Ground [ACM MM 2024] &bull;
+    SEAGULL [2024] &bull;
+    Grounding-IQA [ICLR 2026] &bull;
+    VisualQuality-R1 [NeurIPS 2025 Spotlight] &bull;
+    Probe-Select [2026] &bull;
+    PaQ-2-PiQ [CVPR 2020] &bull;
+    MANIQA [CVPRW 2022] &bull;
+    TOPIQ [IEEE TIP 2024] &bull;
+    Grounding DINO 1.6 [IDEA Research 2025]
+  </div>
+</div>
+
+<!-- ── Nav highlight script ── -->
+<script>
+(function(){
+  const sections = document.querySelectorAll('.slide[id]');
+  const links = document.querySelectorAll('nav a');
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const a = document.querySelector('nav a[href="#'+e.target.id+'"]');
+        if (a) a.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-40% 0px -55% 0px' });
+  sections.forEach(s => obs.observe(s));
+})();
+</script>
+
+</body>
+</html>

@@ -63,6 +63,19 @@ export OPENAI_API_KEY="sk-..."       # Required for GPT-5.4 / GPT-4.1
 # export ANTHROPIC_API_KEY="..."     # Claude (not implemented yet)
 ```
 
+### MLLM-IQA Models (Q-Insight, VisualQuality-R1)
+
+```bash
+pip install qwen_vl_utils==0.0.10
+# Model weights (~15 GB each) downloaded automatically from HuggingFace:
+#   ByteDance/Q-Insight (subfolder: score_degradation)
+#   TianheWu/VisualQuality-R1-7B
+# Optional but recommended for speed:
+pip install flash-attn
+```
+
+Both models are fine-tuned Qwen2.5-VL-7B. They require a CUDA GPU with ~18 GB VRAM. If `flash-attn` is not installed, the script falls back to default attention (slower but works).
+
 ### Qwen3-VL Local Inference
 
 ```bash
@@ -258,7 +271,8 @@ Required:
 Options:
   --manifest PATH        Override manifest path from config
   --models NAME [NAME]   Run only these models (matches IQA + VLM names)
-  --skip-iqa             Skip all IQA model evaluation
+  --skip-iqa             Skip all pyiqa model evaluation
+  --skip-mllm-iqa        Skip MLLM-IQA models (Q-Insight, VisualQuality-R1)
   --skip-vlm             Skip all VLM evaluation
   --max-pairs N          Limit to first N pairs (for debugging)
   --device DEVICE        Override device: "cuda" or "cpu"
@@ -269,20 +283,49 @@ Options:
 
 ### IQA Models
 
-| Category | Model Name | pyiqa ID | What It Measures | Score Direction |
-|----------|-----------|----------|-----------------|----------------|
-| Handcrafted | NIQE | `niqe` | Natural image statistics deviation | Lower = better |
-| Handcrafted | BRISQUE | `brisque` | Spatial domain natural scene statistics | Lower = better |
-| Deep NR-IQA | TOPIQ | `topiq_nr` | Top-down semantic-to-distortion quality | Higher = better |
-| Deep NR-IQA | MUSIQ | `musiq` | Multi-scale image quality (transformer) | Higher = better |
-| ViT-based | MANIQA | `maniqa` | Patch-weighted dual-branch attention | Higher = better |
-| CLIP-guided | CLIP-IQA+ | `clipiqa+` | CLIP-based quality with learned prompts | Higher = better |
-| CLIP-guided | LIQE | `liqe` | CLIP multi-task (scene+distortion+quality) | Higher = better |
-| MLLM-based | Q-Align | `qalign` | mPLUG-Owl2 fine-tuned for IQA | Higher = better |
-| FR perceptual | LPIPS | `lpips` | Learned perceptual distance (VGG) | Lower = better |
-| FR perceptual | DISTS | `dists` | Structure + texture similarity | Lower = better |
+**No-Reference (NR) -- 11 models spanning 5 paradigms:**
 
-**Why these models?** They span 5 distinct categories of IQA approaches. If our hypothesis is correct, ALL categories should struggle with perceptual sensitivity -- even Q-Align (an MLLM specifically trained for IQA) and LIQE (which uses language guidance). This strengthens the argument that the gap is fundamental, not a matter of model architecture.
+| Category | Model | pyiqa ID | Venue | What It Measures | Score Direction |
+|----------|-------|----------|-------|-----------------|----------------|
+| Handcrafted | NIQE | `niqe` | 2012 | Natural image statistics deviation | Lower = better |
+| Handcrafted | BRISQUE | `brisque` | 2012 | Spatial domain natural scene statistics | Lower = better |
+| Deep NR-IQA | TOPIQ | `topiq_nr` | TIP 2024 | Top-down semantic-to-distortion quality | Higher = better |
+| Deep NR-IQA | MUSIQ | `musiq` | ICCV 2021 | Multi-scale image quality (transformer) | Higher = better |
+| ViT-based | MANIQA | `maniqa` | CVPRW 2022 | Patch-weighted dual-branch attention | Higher = better |
+| CLIP-guided | QualiCLIP+ | `qualiclip+` | 2025 | Self-supervised CLIP quality alignment | Higher = better |
+| CLIP-guided | MA-CLIP | `maclip` | AAAI 2026 | Feature magnitude as quality signal (not just cosine) | Higher = better |
+| CLIP+language | LIQE | `liqe` | CVPR 2023 | Multi-task (scene+distortion+quality) | Higher = better |
+| CVPR 2025 | A-FINE NR | `afine_nr` | CVPR 2025 | Adaptive fidelity-naturalness | Higher = better |
+| MLLM-based | Q-Align | `qalign` | ICML 2024 | mPLUG-Owl2 fine-tuned for IQA | Higher = better |
+| MLLM pairwise | Compare2Score | `compare2score` | NeurIPS 2024 | LMM pairwise comparison scoring | Higher = better |
+
+**RL-Enhanced MLLM-IQA -- 2 models (standalone, NeurIPS 2025):**
+
+| Category | Model | Config Name | Venue | What It Measures | Score Range |
+|----------|-------|-------------|-------|-----------------|-------------|
+| RL-MLLM | Q-Insight | `Q-Insight` | NeurIPS 2025 Spotlight | GRPO-trained Qwen2.5-VL-7B, joint score+degradation reward | 1-5 (higher = better) |
+| RL-MLLM | VisualQuality-R1 | `VisualQuality-R1` | NeurIPS 2025 Spotlight | RL-to-Rank with Thurstone model fidelity reward | 1-5 (higher = better) |
+
+These are the most capable IQA-specialized models as of 2025. They use reinforcement learning to enhance quality scoring beyond supervised fine-tuning. Their results are merged into the IQA summary statistics (SRCC/PLCC) alongside pyiqa models.
+
+**Full-Reference (FR) -- 4 models:**
+
+| Category | Model | pyiqa ID | Venue | What It Measures | Score Direction |
+|----------|-------|----------|-------|-----------------|----------------|
+| Classical FR | LPIPS | `lpips` | CVPR 2018 | Learned perceptual distance (AlexNet) | Lower = better |
+| Classical FR | DISTS | `dists` | TPAMI 2022 | Structure + texture similarity | Lower = better |
+| Modern FR | TOPIQ-FR | `topiq_fr` | TIP 2024 | TOPIQ full-reference (NR/FR contrast) | Higher = better |
+| CVPR 2025 FR | A-FINE FR | `afine_fr` | CVPR 2025 | Adaptive fidelity-naturalness FR | Higher = better |
+
+**Why these models?** They span 7 distinct paradigms from 2012 to 2026. The selection is designed so that if ALL fail on perceptual sensitivity, the argument is that the gap is fundamental:
+
+- Handcrafted (NIQE/BRISQUE): natural statistics baselines
+- Deep NR (TOPIQ/MUSIQ/MANIQA): learned quality features
+- CLIP-guided (QualiCLIP+/MA-CLIP/LIQE): language-aware quality, including a 2026 model that exploits feature magnitude
+- A-FINE (CVPR 2025): the latest top-venue method
+- Q-Align + Compare2Score: MLLM-based IQA -- if even models specifically designed for quality assessment with LMM reasoning fail, the gap is not solvable by scaling
+- Q-Insight + VisualQuality-R1 (NeurIPS 2025): RL-enhanced MLLM-IQA -- the frontier of the field. Q-Align (2024) → Q-Insight/VQR1 (2025) shows capability progression. If even RL-enhanced models fail, the gap is fundamental
+- FR metrics (LPIPS/DISTS/TOPIQ-FR/A-FINE FR): having the reference image should help -- if FR metrics still miss sensitivity differences, the problem is not "lacking reference"
 
 **Score direction handling**: The script stores raw scores with a `lower_better` flag. When computing correlations and rank agreement, score direction is normalized automatically.
 

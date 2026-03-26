@@ -14,22 +14,43 @@ models:
     enabled: true
     device: "cuda"      # "cpu" for local debug
     nr_models:
-      # Handcrafted (natural image statistics baseline)
+      # Handcrafted (natural image statistics baseline, 2012)
       - "niqe"
       - "brisque"
-      # Deep NR-IQA (current SOTA, subsume DBCNN/HyperIQA)
-      - "topiq_nr"
-      - "musiq"
-      # ViT patch-weighted attention
-      - "maniqa"
-      # CLIP-guided (language-aware IQA, bridge between traditional and VLM)
-      - "clipiqa+"
-      - "liqe"
-      # MLLM-based IQA (critical: proves even IQA-specialized MLLM fails)
-      - "qalign"
+      # Deep NR-IQA
+      - "topiq_nr"           # SOTA NR, subsumes DBCNN/HyperIQA
+      - "musiq"              # Multi-scale transformer (different inductive bias)
+      - "maniqa"             # ViT patch-weighted attention
+      # CLIP-guided
+      - "qualiclip+"         # Self-supervised CLIP IQA (2025, replaces clipiqa+)
+      - "maclip"             # Magnitude-aware CLIP (AAAI 2026, feature norm as quality signal)
+      - "liqe"               # CLIP + language multi-task (CVPR 2023)
+      # CVPR 2025
+      - "afine_nr"           # Adaptive fidelity-naturalness (CVPR 2025)
+      # MLLM-based IQA
+      - "qalign"             # LMM quality scoring (ICML 2024)
+      - "compare2score"      # LMM pairwise comparison (NeurIPS 2024 Spotlight)
     fr_models:
-      - "lpips"
-      - "dists"
+      - "lpips"              # Learned perceptual distance (2018)
+      - "dists"              # Structure + texture similarity (2022)
+      - "topiq_fr"           # TOPIQ full-reference (NR/FR contrast)
+      - "afine_fr"           # Adaptive fidelity-naturalness FR (CVPR 2025)
+
+  # RL-enhanced MLLM IQA (standalone repos, NeurIPS 2025)
+  # These use native quality scoring prompts (1-5 scale), not our 3-prompt VLM templates.
+  # Results are treated as NR-IQA scores for SRCC/PLCC computation.
+  mllm_iqa:
+    enabled: true
+    device: "cuda"
+    models:
+      - name: "Q-Insight"
+        model_id: "ByteDance/Q-Insight"
+        subfolder: "score_degradation"   # HuggingFace subfolder for scoring weights
+        venue: "NeurIPS 2025 Spotlight"
+      - name: "VisualQuality-R1"
+        model_id: "TianheWu/VisualQuality-R1-7B"
+        subfolder: null
+        venue: "NeurIPS 2025 Spotlight"
 
   vlm:
     enabled: true

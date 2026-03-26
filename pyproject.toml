@@ -10,11 +10,12 @@ requires-python = ">=3.10"
 dependencies = [
     "torch>=2.1.0",
     "torchvision>=0.16.0",
-    "transformers>=4.37.0",
+    "transformers>=4.57.0",      # Qwen3-VL needs >=4.57; Qwen2.5-VL also benefits
     "accelerate>=0.25.0",
     "peft>=0.7.0",               # LoRA
     "omegaconf>=2.3.0",          # Config management
     "wandb>=0.16.0",             # Experiment tracking
+    "numpy>=1.24.0",
     "scipy>=1.11.0",             # SRCC, PLCC computation
     "pillow>=10.0.0",
     "opencv-python>=4.8.0",
@@ -35,12 +36,15 @@ grounding = [
     "segment-anything-2",         # SAM 2
 ]
 iqa = [
-    "pyiqa>=0.1.10",             # IQA-PyTorch (TOPIQ, NIQE, BRISQUE, etc.)
+    "pyiqa>=0.1.15",             # IQA-PyTorch: TOPIQ, NIQE, Q-Align, Compare2Score, MA-CLIP, A-FINE, etc.
 ]
 vlm = [
     "openai>=1.0.0",             # OpenAI API (GPT-5.4, GPT-4.1)
     "google-generativeai>=0.8.0", # Gemini API (placeholder)
     "anthropic>=0.40.0",          # Anthropic API (placeholder)
+]
+mllm-iqa = [
+    "qwen_vl_utils>=0.0.10",    # Image preprocessing for Qwen2.5-VL (Q-Insight, VisualQuality-R1)
 ]
 
 [tool.setuptools.packages.find]

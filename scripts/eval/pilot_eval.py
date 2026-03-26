@@ -10,9 +10,10 @@ Usage:
     python scripts/eval/pilot_eval.py --config configs/eval/pilot.yaml --models topiq_nr gpt-5.4
 
 Requirements:
-    pip install -e ".[iqa]"       # for pyiqa models
-    pip install -e ".[vlm]"       # for OpenAI/Gemini/Anthropic APIs
-    pip install transformers>=4.57.0  # for Qwen3-VL local inference
+    pip install -e ".[iqa]"          # pyiqa models (TOPIQ, Q-Align, MA-CLIP, A-FINE, etc.)
+    pip install -e ".[mllm-iqa]"     # Q-Insight, VisualQuality-R1 (Qwen2.5-VL based)
+    pip install -e ".[vlm]"          # OpenAI/Gemini/Anthropic APIs
+    # transformers>=4.57.0 required (already in core deps)
 """
 
 import argparse
@@ -118,6 +119,7 @@ def parse_args():
     parser.add_argument("--manifest", type=str, default=None, help="Override manifest path")
     parser.add_argument("--models", nargs="+", default=None, help="Run only these models")
     parser.add_argument("--skip-iqa", action="store_true", help="Skip IQA model evaluation")
+    parser.add_argument("--skip-mllm-iqa", action="store_true", help="Skip MLLM-IQA evaluation")
     parser.add_argument("--skip-vlm", action="store_true", help="Skip VLM evaluation")
     parser.add_argument("--max-pairs", type=int, default=None, help="Limit number of pairs")
     parser.add_argument("--device", type=str, default=None, help="Override device (cuda/cpu)")
@@ -131,6 +133,9 @@ def parse_args():
         cfg.models.iqa.device = args.device
     if args.skip_iqa:
         cfg.models.iqa.enabled = False
+    if args.skip_mllm_iqa:
+        if OmegaConf.select(cfg, "models.mllm_iqa"):
+            cfg.models.mllm_iqa.enabled = False
     if args.skip_vlm:
         cfg.models.vlm.enabled = False
     if args.output_dir:
@@ -317,6 +322,247 @@ class IQAEvaluator:
             r = self.evaluate_pair(pair)
             results.append({"pair_id": pair["pair_id"], "iqa": r})
         return results
+
+
+# ---------------------------------------------------------------------------
+# MLLM-IQA Evaluator (Q-Insight, VisualQuality-R1)
+# ---------------------------------------------------------------------------
+
+# Native prompts for RL-enhanced MLLM-IQA models (1-5 scale)
+_QINSIGHT_SYSTEM = (
+    "A conversation between User and Assistant. The user asks a question, and the "
+    "Assistant solves it. The assistant first thinks about the reasoning process in "
+    "the mind and then provides the user with the answer. The reasoning process and "
+    "answer are enclosed within <think> </think> and <answer> </answer> tags, "
+    "respectively, i.e., <think> reasoning process here </think>"
+    "<answer> answer here </answer>"
+)
+_QINSIGHT_PROMPT = (
+    "What is your overall rating on the quality of this picture? The rating should "
+    "be a float between 1 and 5, rounded to two decimal places, with 1 representing "
+    "very poor quality and 5 representing excellent quality. Return the final answer "
+    'in JSON format with the following keys: "rating": The score.'
+)
+
+_VQR1_PROMPT = (
+    "You are doing the image quality assessment task. Here is the question: "
+    "What is your overall rating on the quality of this picture? The rating should "
+    "be a float between 1 and 5, rounded to two decimal places, with 1 representing "
+    "very poor quality and 5 representing excellent quality. "
+    "Please only output the final answer with only one score in <answer> </answer> tags."
+)
+
+
+class MLLMIQAEvaluator:
+    """Evaluator for RL-enhanced MLLM-IQA models (Q-Insight, VisualQuality-R1).
+
+    These models are fine-tuned Qwen2.5-VL-7B with native quality scoring prompts.
+    They output per-image scores (1-5), treated as NR-IQA metrics for correlation analysis.
+
+    Models are evaluated sequentially (load one → score all pairs → unload → next)
+    to avoid GPU OOM from loading multiple ~15GB models simultaneously.
+    """
+
+    def __init__(self, cfg):
+        self.device = cfg.models.mllm_iqa.device
+        self.max_size = cfg.data.get("max_image_size")
+        self.models_cfg = []
+
+        filter_models = cfg.get("_cli_models")
+        for mcfg in cfg.models.mllm_iqa.models:
+            name = mcfg["name"]
+            if filter_models and name not in filter_models:
+                continue
+            self.models_cfg.append(OmegaConf.to_container(mcfg, resolve=True))
+
+        # Checkpoint
+        self.output_dir = Path(cfg.experiment.output_dir)
+        self.checkpoint_path = self.output_dir / "mllm_iqa_partial.json"
+
+        logger.info("MLLM-IQA evaluator: %d models configured", len(self.models_cfg))
+
+    def _load_model(self, mcfg: dict):
+        import torch
+        from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+
+        model_id = mcfg["model_id"]
+        subfolder = mcfg.get("subfolder")
+        logger.info("Loading MLLM-IQA model: %s (from %s)", mcfg["name"], model_id)
+
+        kwargs = dict(torch_dtype=torch.bfloat16, device_map=self.device)
+        proc_kwargs = {}
+        if subfolder:
+            kwargs["subfolder"] = subfolder
+            proc_kwargs["subfolder"] = subfolder
+
+        try:
+            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                model_id, attn_implementation="flash_attention_2", **kwargs,
+            )
+        except (ImportError, ValueError):
+            logger.info("flash_attention_2 not available, using default attention")
+            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id, **kwargs)
+
+        processor = AutoProcessor.from_pretrained(model_id, **proc_kwargs)
+        logger.info("Loaded %s", mcfg["name"])
+        return model, processor
+
+    @staticmethod
+    def _unload_model(model, processor):
+        import torch
+        del model, processor
+        torch.cuda.empty_cache()
+
+    def _build_messages(self, mcfg: dict, image_path: str) -> list[dict]:
+        if "Q-Insight" in mcfg["name"]:
+            return [
+                {"role": "system", "content": _QINSIGHT_SYSTEM},
+                {"role": "user", "content": [
+                    {"type": "image", "image": image_path},
+                    {"type": "text", "text": _QINSIGHT_PROMPT},
+                ]},
+            ]
+        else:  # VisualQuality-R1
+            return [
+                {"role": "user", "content": [
+                    {"type": "image", "image": image_path},
+                    {"type": "text", "text": _VQR1_PROMPT},
+                ]},
+            ]
+
+    @staticmethod
+    def _parse_score(text: str) -> float | None:
+        import re
+        answer_match = re.search(r"<answer>(.*?)</answer>", text, re.DOTALL)
+        if answer_match:
+            answer = answer_match.group(1).strip()
+            rating_match = re.search(r'"rating"\s*:\s*([\d.]+)', answer)
+            if rating_match:
+                return float(rating_match.group(1))
+            num_match = re.search(r"\d+(\.\d+)?", answer)
+            if num_match:
+                return float(num_match.group())
+        num_match = re.search(r"\b([1-5](?:\.\d{1,2})?)\b", text)
+        if num_match:
+            return float(num_match.group(1))
+        logger.warning("Failed to parse MLLM-IQA score from: %s", text[:200])
+        return None
+
+    def _score_image(self, model, processor, mcfg: dict, image_path: str) -> tuple[float | None, str | None]:
+        import torch
+        try:
+            from qwen_vl_utils import process_vision_info
+        except ImportError:
+            raise ImportError(
+                "qwen_vl_utils is required for MLLM-IQA models. "
+                "Install: pip install -e \".[mllm-iqa]\""
+            )
+
+        messages = self._build_messages(mcfg, image_path)
+
+        try:
+            text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            image_inputs, video_inputs = process_vision_info(messages)
+            inputs = processor(
+                text=[text], images=image_inputs, videos=video_inputs,
+                padding=True, return_tensors="pt",
+            )
+            inputs = inputs.to(model.device)
+
+            with torch.no_grad():
+                generated_ids = model.generate(
+                    **inputs, max_new_tokens=1024, do_sample=True,
+                    temperature=1.0, top_k=50, top_p=0.95,
+                )
+            trimmed = generated_ids[:, inputs["input_ids"].shape[1]:]
+            raw_text = processor.batch_decode(trimmed, skip_special_tokens=True)[0]
+            score = self._parse_score(raw_text)
+            return score, raw_text
+        except Exception as e:
+            logger.error("MLLM-IQA scoring error (%s): %s", mcfg["name"], e)
+            return None, None
+
+    def _load_checkpoint(self) -> dict:
+        if self.checkpoint_path.exists():
+            with open(self.checkpoint_path) as f:
+                data = json.load(f)
+            logger.info("Loaded MLLM-IQA checkpoint: %s", list(data.keys()))
+            return data
+        return {}
+
+    def _save_checkpoint(self, checkpoint: dict):
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        with open(self.checkpoint_path, "w") as f:
+            json.dump(checkpoint, f, indent=2, ensure_ascii=False)
+
+    def evaluate_all(self, pairs: list[dict]) -> list[dict]:
+        """Evaluate all pairs, one model at a time to manage GPU memory.
+
+        Returns list of dicts with the same structure as IQAEvaluator.evaluate_all:
+        [{"pair_id": "001", "iqa": {"Q-Insight": {...}, "VisualQuality-R1": {...}}}]
+        """
+        # checkpoint: {model_name: {pair_id: {ref_score, var_score, ...}}}
+        checkpoint = self._load_checkpoint()
+
+        # Initialize per-pair result dicts
+        pair_results = {p["pair_id"]: {} for p in pairs}
+
+        # Evaluate one model at a time (load → all pairs → unload)
+        for mcfg in self.models_cfg:
+            name = mcfg["name"]
+
+            # Skip if all pairs already done for this model
+            if name in checkpoint:
+                cached = checkpoint[name]
+                done_count = sum(1 for pid in pair_results if pid in cached)
+                if done_count == len(pairs):
+                    logger.info("Skipping %s (all %d pairs in checkpoint)", name, done_count)
+                    for pid in pair_results:
+                        pair_results[pid][name] = cached.get(pid)
+                    continue
+
+            logger.info("Loading and evaluating: %s", name)
+            try:
+                model, processor = self._load_model(mcfg)
+            except Exception as e:
+                logger.error("Failed to load %s: %s", name, e)
+                continue
+
+            if name not in checkpoint:
+                checkpoint[name] = {}
+
+            for pair in tqdm(pairs, desc=f"MLLM-IQA: {name}"):
+                pid = pair["pair_id"]
+
+                # Skip if already in checkpoint
+                if pid in checkpoint[name]:
+                    pair_results[pid][name] = checkpoint[name][pid]
+                    continue
+
+                ref_score, ref_raw = self._score_image(model, processor, mcfg, pair["_reference_abs"])
+                var_score, var_raw = self._score_image(model, processor, mcfg, pair["_variant_abs"])
+
+                if ref_score is not None and var_score is not None:
+                    entry = {
+                        "ref_score": ref_score,
+                        "var_score": var_score,
+                        "delta": var_score - ref_score,
+                        "lower_better": False,
+                        "ref_raw": ref_raw,
+                        "var_raw": var_raw,
+                    }
+                else:
+                    entry = None
+                    logger.warning("Failed to score pair %s with %s", pid, name)
+
+                pair_results[pid][name] = entry
+                checkpoint[name][pid] = entry
+                self._save_checkpoint(checkpoint)
+
+            self._unload_model(model, processor)
+            logger.info("Unloaded %s", name)
+
+        return [{"pair_id": pid, "iqa": pair_results[pid]} for pid in pair_results]
 
 
 # ---------------------------------------------------------------------------
@@ -925,7 +1171,7 @@ def main():
     iqa_results = []
     vlm_results = []
 
-    # IQA evaluation
+    # IQA evaluation (pyiqa models)
     if cfg.models.iqa.enabled:
         logger.info("=== IQA Evaluation ===")
         evaluator = IQAEvaluator(cfg)
@@ -933,7 +1179,27 @@ def main():
     else:
         logger.info("IQA evaluation skipped")
 
-    # VLM evaluation
+    # MLLM-IQA evaluation (Q-Insight, VisualQuality-R1)
+    mllm_cfg = OmegaConf.select(cfg, "models.mllm_iqa")
+    if mllm_cfg and mllm_cfg.get("enabled", False):
+        logger.info("=== MLLM-IQA Evaluation ===")
+        mllm_evaluator = MLLMIQAEvaluator(cfg)
+        mllm_results = mllm_evaluator.evaluate_all(pairs)
+        # Merge MLLM-IQA results into iqa_results by pair_id
+        if iqa_results:
+            iqa_by_pid = {r["pair_id"]: r for r in iqa_results}
+            for mllm_r in mllm_results:
+                pid = mllm_r["pair_id"]
+                if pid in iqa_by_pid:
+                    iqa_by_pid[pid]["iqa"].update(mllm_r["iqa"])
+                else:
+                    iqa_results.append(mllm_r)
+        else:
+            iqa_results = mllm_results
+    else:
+        logger.info("MLLM-IQA evaluation skipped")
+
+    # VLM evaluation (GPT-5.4, Qwen3-VL, etc.)
     if cfg.models.vlm.enabled:
         logger.info("=== VLM Evaluation ===")
         evaluator = VLMEvaluator(cfg)
